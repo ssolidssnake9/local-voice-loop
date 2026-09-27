@@ -1,0 +1,18 @@
+# PORTABILITY NOTE: replace every /home/hatch with your own home dir before installing (see README).
+# Talk page server (:8090) — serves talk.html + /api/* for the voice loop
+# Source of truth: ~/workspace/systemd/talk-server.service (persistent).
+[Unit]
+Description=Voice loop talk page server (:8090)
+After=network.target voice-loop-parakeet.service voice-loop-ollama.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/hatch/workspace/voice-loop
+Environment=HOME=/home/hatch
+Environment=TMPDIR=/home/hatch/workspace/.tmp
+ExecStart=/usr/bin/python3 /home/hatch/workspace/voice-loop/talk-server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

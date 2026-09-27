@@ -1,0 +1,20 @@
+# PORTABILITY NOTE: replace every /home/hatch with your own home dir before installing (see README).
+# Voice loop: parakeet STT server (:5092)
+# Source of truth lives at ~/workspace/systemd/voice-loop-parakeet.service
+# (persistent). The watchdog reinstalls it to /etc/systemd/system/ if wiped.
+[Unit]
+Description=Voice loop parakeet STT server (:5092)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/hatch/workspace/scratch/parakeet-pilot
+Environment=ONNXRUNTIME_LIB=/home/hatch/workspace/scratch/parakeet-pilot/onnxruntime-linux-x64-1.25.1/lib/libonnxruntime.so
+Environment=HOME=/home/hatch
+Environment=TMPDIR=/home/hatch/workspace/.tmp
+ExecStart=/home/hatch/workspace/scratch/parakeet-pilot/parakeet -port 5092 -models /home/hatch/workspace/scratch/parakeet-pilot/models -workers 1 -long-audio
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Talk — local voice loop</title>
+<style>
+  :root { --bg:#0d0d10; --card:#17171c; --text:#f2f0ea; --muted:#8a8a93; --ember:#ff4a2e; --ok:#3ddc84; --bad:#ff5c5c; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,system-ui,sans-serif; min-height:100vh; display:flex; flex-direction:column; align-items:center; }
+  header { width:100%; max-width:560px; padding:18px 20px 0; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.5px; }
+  header h1 span { color:var(--ember); }
+  .dots { display:flex; gap:10px; font-size:12px; color:var(--muted); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--muted); margin-right:4px; vertical-align:1px; }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--bad); }
+  #log { width:100%; max-width:560px; flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:85%; padding:10px 14px; border-radius:16px; font-size:15px; line-height:1.45; }
+  .msg.you { align-self:flex-end; background:#2a2a32; border-bottom-right-radius:4px; }
+  .msg.bot { align-self:flex-start; background:var(--card); border:1px solid #26262e; border-bottom-left-radius:4px; }
+  #status { min-height:22px; font-size:13px; color:var(--muted); text-align:center; padding:4px 20px; }
+  #status.live { color:var(--ember); }
+  #pad { width:100%; max-width:560px; padding:10px 20px 34px; display:flex; justify-content:center; }
+  #mic { width:96px; height:96px; border-radius:50%; border:none; background:var(--ember); color:#fff; font-size:38px; cursor:pointer; box-shadow:0 6px 28px rgba(255,74,46,.35); touch-action:none; user-select:none; }
+  #mic:active, #mic.held { transform:scale(.93); box-shadow:0 2px 14px rgba(255,74,46,.5); }
+  #mic:disabled { background:#3a3a42; box-shadow:none; cursor:wait; }
+  .hint { text-align:center; color:var(--muted); font-size:12px; padding:0 20px 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TALK <span>🔥</span></h1>
+  <div class="dots">
+    <span><span class="dot" id="d-stt"></span>hear</span>
+    <span><span class="dot" id="d-llm"></span>think</span>
+  </div>
+</header>
+<div id="log"></div>
+<div id="status">hold the button and talk</div>
+<div id="pad"><button id="mic" aria-label="Hold to talk">🎙</button></div>
+<div class="hint">100% on this box — parakeet hears, llama thinks, supertonic speaks. nothing leaves the machine.</div>
+
+<script>
+const log = document.getElementById('log');
+const statusEl = document.getElementById('status');
+const micBtn = document.getElementById('mic');
+
+function say(msg, who) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + who;
+  d.textContent = msg;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+function setStatus(t, live) {
+  statusEl.textContent = t;
+  statusEl.classList.toggle('live', !!live);
+}
+async function postJSON(url, obj) {
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(obj) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+
+// --- 16kHz mono WAV capture ---
+let ac = null, stream = null, proc = null, chunks = [];
+function encodeWAV(samples) {
+  const n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const wstr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); wstr(8, 'WAVE'); wstr(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 16000, true); v.setUint32(28, 32000, true); v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true); wstr(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Blob([buf], { type:'audio/wav' });
+}
+async function startRec() {
+  stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+  ac = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
+  const src = ac.createMediaStreamSource(stream);
+  proc = ac.createScriptProcessor(4096, 1, 1);
+  chunks = [];
+  proc.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  src.connect(proc); proc.connect(ac.destination);
+}
+function stopRec() {
+  proc.disconnect(); ac.close(); stream.getTracks().forEach(t => t.stop());
+  const total = chunks.reduce((a, c) => a + c.length, 0);
+  const flat = new Float32Array(total);
+  let off = 0;
+  for (const c of chunks) { flat.set(c, off); off += c.length; }
+  return encodeWAV(flat);
+}
+
+// --- the loop ---
+let busy = false;
+async function handleSpeech(wavBlob) {
+  micBtn.disabled = true;
+  try {
+    setStatus('hearing…', true);
+    const stt = await fetch('/api/stt', { method:'POST', body:wavBlob });
+    const sj = await stt.json();
+    if (!stt.ok) throw new Error(sj.error || 'stt failed');
+    const text = sj.text || '';
+    if (!text.trim()) { setStatus('didn\'t catch that — try again'); return; }
+    say(text, 'you');
+    setStatus('thinking…', true);
+    const { reply } = await postJSON('/api/chat', { text });
+    say(reply, 'bot');
+    setStatus('speaking…', true);
+    const tts = await fetch('/api/tts', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:reply }) });
+    if (!tts.ok) throw new Error('tts failed');
+    const audio = new Audio(URL.createObjectURL(await tts.blob()));
+    await new Promise((res, rej) => { audio.onended = res; audio.onerror = rej; audio.play().catch(rej); });
+    setStatus('hold the button and talk');
+  } catch (e) {
+    setStatus('error: ' + e.message);
+  } finally {
+    micBtn.disabled = false;
+  }
+}
+
+micBtn.addEventListener('pointerdown', async e => {
+  e.preventDefault();
+  if (busy) return;
+  busy = true; micBtn.classList.add('held');
+  try { await startRec(); setStatus('listening…', true); }
+  catch (err) { setStatus('mic blocked — allow microphone access'); busy = false; micBtn.classList.remove('held'); }
+});
+window.addEventListener('pointerup', async () => {
+  if (!busy || !ac) return;
+  micBtn.classList.remove('held');
+  const wav = stopRec(); ac = null; busy = false;
+  handleSpeech(wav);
+});
+
+// backend health dots
+fetch('/health').then(r => r.json()).then(h => {
+  document.getElementById('d-stt').className = 'dot ' + (h.parakeet ? 'ok' : 'bad');
+  document.getElementById('d-llm').className = 'dot ' + (h.ollama ? 'ok' : 'bad');
+}).catch(() => {});
+</script>
+</body>
+</html>
