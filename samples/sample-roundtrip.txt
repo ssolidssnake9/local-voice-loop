@@ -1,0 +1,14 @@
+Sample round-trip — local-voice-loop, 2026-09-27
+All three stages ran on one machine, zero cloud.
+
+  spoken input (synthesized for the demo): "What can you do without the internet?"
+
+  1. parakeet STT (:5092) heard:
+     "What can you do without the internet?"
+
+  2. llama3.2:3b via Ollama (:11434) replied:
+     "I can still provide general information, answer questions, and assist
+      with tasks like calculations and language translation, even without
+      an internet connection, using pre-installed knowledge and data."
+
+  3. Supertonic F1 (tts-local) spoke the reply — hear it in sample-reply.mp3.

@@ -111,3 +111,13 @@ Glue code in this repo: **MIT** (see [LICENSE](LICENSE)).
 Third-party pieces keep their own: parakeet server code MIT, NVIDIA
 Parakeet TDT 0.6B weights CC-BY-4.0, Silero VAD MIT, Supertonic
 weights MIT, Ollama under its own license.
+
+## Sample output
+
+A real round-trip from 2026-09-27, all on one machine, zero cloud:
+
+- Full transcript: [samples/sample-roundtrip.txt](samples/sample-roundtrip.txt)
+- The spoken reply (Supertonic F1 voice): [samples/sample-reply.mp3](samples/sample-reply.mp3)
+
+Spoken question → parakeet STT (`What can you do without the internet?`, word-perfect)
+→ llama3.2:3b answers → F1 speaks it back.
