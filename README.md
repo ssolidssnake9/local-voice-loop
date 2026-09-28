@@ -1,3 +1,5 @@
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ssolidssnake9/local-voice-loop)
+
 # Local Voice Loop
 
 A fully local voice loop: **parakeet** hears, **llama** thinks,
