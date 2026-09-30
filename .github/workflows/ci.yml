@@ -1,0 +1,17 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile all Python
+        run: python -m py_compile $(git ls-files '*.py')
+      - name: Shellcheck scripts
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          sh_files=$(git ls-files '*.sh')
+          if [ -n "$sh_files" ]; then echo "$sh_files" | xargs shellcheck; else echo "no shell scripts"; fi
